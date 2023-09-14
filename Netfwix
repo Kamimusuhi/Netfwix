@@ -1,0 +1,48 @@
+#!/bin/bash
+
+echo "Enter the name of the movie or video you want to search for on 1337x.to:"
+read -r query
+
+encoded_query=$(echo "$query" | sed 's/ /+/g')
+
+search_url="https://1337x.to/search/$encoded_query/1/"
+echo "Searching for '$query' on 1337x.to..."
+
+search_results=$(curl -s "$search_url" | pup 'a[href^="/torrent/"] attr{href}')
+
+if [ -z "$search_results" ]; then
+  echo "No videos found for '$query'."
+  exit 1
+fi
+
+IFS=$'\n' read -rd '' -a torrent_links <<< "$search_results"
+max_display=16
+num_results="${#torrent_links[@]}"
+display_limit=$((num_results < max_display ? num_results : max_display))
+
+echo "Found the following torrents:"
+for index in $(seq 0 $((display_limit - 1))); do
+  echo "$index: ${torrent_links[index]}"
+done
+
+echo "Enter the number of the torrent you want to stream:"
+read -r selected_index
+
+if [[ ! "$selected_index" =~ ^[0-9]+$ ]] || ((selected_index < 0)) || ((selected_index >= display_limit)); then
+  echo "Invalid selection."
+  exit 1
+fi
+
+selected_torrent="${torrent_links[selected_index]}"
+full_torrent_url="https://1337x.to$selected_torrent"
+
+magnet=$(curl -s "$full_torrent_url" | grep -Po "magnet:\?xt=urn:btih:[a-zA-Z0-9]*" | head -n 1)
+
+if [ -z "$magnet" ]; then
+  echo "No magnet link found for the selected torrent."
+  exit 1
+fi
+
+echo "Found magnet link: $magnet"
+peerflix "$magnet" --mpv
+
